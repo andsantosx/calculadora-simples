@@ -1,171 +1,217 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, SafeAreaView, Dimensions, TouchableOpacity } from 'react-native';
-import { Provider as PaperProvider, Text, Surface, MD3DarkTheme } from 'react-native-paper';
+/**
+ * Scribe Calculator - An Ancient Egyptian Hieroglyphic Calculator
+ * Built with React Native, Expo, and React Native Paper (Material Design 3).
+ */
+
+import React, { useState, useCallback } from 'react';
+import { StyleSheet, View, SafeAreaView, Dimensions } from 'react-native';
+import { 
+  Provider as PaperProvider, 
+  Text, 
+  Surface, 
+  MD3DarkTheme, 
+  Button, 
+  Appbar 
+} from 'react-native-paper';
 import { StatusBar } from 'expo-status-bar';
+
+// --- CONFIGURATION & CONSTANTS ---
 
 const { width } = Dimensions.get('window');
 
-// Ancient Egyptian Hieroglyphic Mapping
 const HIEROGLYPHS = {
-  '0': '\u{13124}', // nfr (beauty/zero/complete)
-  '1': '\u{133FA}', // single stroke
-  '2': '\u{133FB}', // two strokes
-  '3': '\u{133FC}', // three strokes
-  '4': '\u{133FD}', // ...
+  '0': '\u{13124}',
+  '1': '\u{133FA}',
+  '2': '\u{133FB}',
+  '3': '\u{133FC}',
+  '4': '\u{133FD}',
   '5': '\u{133FE}',
   '6': '\u{133FF}',
   '7': '\u{13400}',
   '8': '\u{13401}',
   '9': '\u{13402}',
-  '+': '\u{130BB}', // walking legs toward
-  '-': '\u{130BD}', // walking legs away
-  '*': '\u{133F4}', // crossed sticks
-  '/': '\u{1340D}', // pool/division
-  '=': '\u{13076}', // head/result
-  'C': '\u{132F4}', // folded cloth (clear)
-  '.': '\u{133F2}', // small mark
+  '+': '\u{130BB}',
+  '-': '\u{130BD}',
+  '*': '\u{133F4}',
+  '/': '\u{1340D}',
+  '=': '\u{13076}',
+  'C': '\u{132F4}',
+  '.': '\u{133F2}',
+  'Error': '𓏴𓏴𓏴',
 };
 
-const CalculatorButton = ({ label, onPress, color, flex = 1, textColor = '#E0E0E0' }) => {
-  const displayLabel = HIEROGLYPHS[label] || label;
+// --- COMPONENTS ---
+
+/**
+ * Display component for Hieroglyphic sequences
+ */
+const GlyphDisplay = ({ text }) => {
+  if (text === 'Error') {
+    return <Text variant="displayLarge" style={styles.glyphText}>{HIEROGLYPHS.Error}</Text>;
+  }
+
   return (
-    <Surface style={[styles.buttonSurface, { flex }]}>
-      <TouchableOpacity
-        style={[styles.button, { backgroundColor: color || '#2C2C2C' }]}
-        onPress={() => onPress(label)}
-        activeOpacity={0.7}
-      >
-        <Text style={[styles.buttonText, { color: textColor }]}>{displayLabel}</Text>
-      </TouchableOpacity>
-    </Surface>
+    <View style={styles.glyphRow}>
+      {text.split('').map((char, index) => (
+        <Text key={`${char}-${index}`} variant="displayLarge" style={styles.glyphText}>
+          {HIEROGLYPHS[char] || char}
+        </Text>
+      ))}
+    </View>
   );
 };
 
+/**
+ * Calculator Button using React Native Paper's Button component
+ */
+const CalcButton = ({ label, onPress, mode = "contained-tonal", flex = 1, buttonColor, textColor }) => {
+  const glyph = HIEROGLYPHS[label] || label;
+  
+  return (
+    <Button
+      mode={mode}
+      onPress={() => onPress(label)}
+      style={[styles.button, { flex }]}
+      contentStyle={styles.buttonContent}
+      buttonColor={buttonColor}
+      textColor={textColor}
+      labelStyle={styles.buttonLabel}
+    >
+      {glyph}
+    </Button>
+  );
+};
+
+// --- MAIN APPLICATION ---
+
 export default function App() {
-  const [display, setDisplay] = useState('0');
-  const [equation, setEquation] = useState('');
-  const [shouldResetDisplay, setShouldResetDisplay] = useState(false);
+  const [currentValue, setCurrentValue] = useState('0');
+  const [operator, setOperator] = useState(null);
+  const [previousValue, setPreviousValue] = useState(null);
+  const [shouldResetScreen, setShouldResetScreen] = useState(false);
 
-  const handlePress = (value) => {
-    if (value === 'C') {
-      setDisplay('0');
-      setEquation('');
-      setShouldResetDisplay(false);
+  const calculate = useCallback((first, second, op) => {
+    const a = parseFloat(first);
+    const b = parseFloat(second);
+    switch (op) {
+      case '+': return a + b;
+      case '-': return a - b;
+      case '*': return a * b;
+      case '/': return b !== 0 ? a / b : 'Error';
+      default: return b;
+    }
+  }, []);
+
+  const handleInput = (input) => {
+    if (input === 'C') {
+      setCurrentValue('0');
+      setOperator(null);
+      setPreviousValue(null);
+      setShouldResetScreen(false);
       return;
     }
 
-    if (value === '=') {
-      calculateResult();
-      return;
-    }
-
-    if (['+', '-', '*', '/'].includes(value)) {
-      setEquation(display + ' ' + value + ' ');
-      setShouldResetDisplay(true);
-      return;
-    }
-
-    if (value === '.') {
-      if (!display.includes('.')) {
-        setDisplay(display + '.');
-      }
-      return;
-    }
-
-    // Number input
-    if (display === '0' || shouldResetDisplay) {
-      setDisplay(value);
-      setShouldResetDisplay(false);
-    } else {
-      setDisplay(display + value);
-    }
-  };
-
-  const calculateResult = () => {
-    try {
-      const fullExpression = equation + display;
-      // We use a safe evaluation approach by replacing operators
-      const mathExpression = fullExpression
-        .replace(/ /g, '')
-        .replace(/x/g, '*') // in case we used 'x'
-        .replace(/÷/g, '/'); // in case we used '÷'
-      
-      const result = eval(mathExpression);
-      
-      if (!isFinite(result)) {
-        setDisplay('Error');
+    if (['+', '-', '*', '/'].includes(input)) {
+      if (operator && !shouldResetScreen) {
+        const result = calculate(previousValue, currentValue, operator);
+        setPreviousValue(result.toString());
+        setCurrentValue(result.toString());
       } else {
-        // Limit precision
-        const formattedResult = Number(result.toFixed(8)).toString();
-        setDisplay(formattedResult);
-        setEquation('');
+        setPreviousValue(currentValue);
       }
-      setShouldResetDisplay(true);
-    } catch (e) {
-      setDisplay('Error');
-      setEquation('');
-      setShouldResetDisplay(true);
+      setOperator(input);
+      setShouldResetScreen(true);
+      return;
     }
-  };
 
-  const renderHieroglyphs = (text) => {
-    if (text === 'Error') return <Text style={styles.displayText}>𓏴𓏴𓏴</Text>;
-    return text.split('').map((char, index) => (
-      <Text key={index} style={styles.displayText}>
-        {HIEROGLYPHS[char] || char}
-      </Text>
-    ));
+    if (input === '=') {
+      if (!operator) return;
+      const result = calculate(previousValue, currentValue, operator);
+      setCurrentValue(result.toString());
+      setOperator(null);
+      setPreviousValue(null);
+      setShouldResetScreen(true);
+      return;
+    }
+
+    if (input === '.') {
+      if (shouldResetScreen) {
+        setCurrentValue('0.');
+        setShouldResetScreen(false);
+      } else if (!currentValue.includes('.')) {
+        setCurrentValue(currentValue + '.');
+      }
+      return;
+    }
+
+    if (currentValue === '0' || shouldResetScreen) {
+      setCurrentValue(input);
+      setShouldResetScreen(false);
+    } else {
+      setCurrentValue(currentValue + input);
+    }
   };
 
   return (
     <PaperProvider theme={MD3DarkTheme}>
       <SafeAreaView style={styles.container}>
         <StatusBar style="light" />
-        
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>𓐍𓄤𓂻𓏺 𓁶𓏺𓃠𓏺𓈙𓏺</Text>
-          <Text style={styles.headerSubtitle}>SCRIBE CALCULATOR</Text>
-        </View>
 
-        <Surface style={styles.displayContainer}>
-          <View style={styles.equationArea}>
-            <Text style={styles.equationText}>{equation}</Text>
+        {/* Using Paper Appbar for Header */}
+        <Appbar.Header style={styles.appbar}>
+          <Appbar.Content 
+            title="𓐍𓄤𓂻𓏺 𓁶𓏺𓃠𓏺𓈙𓏺" 
+            titleStyle={styles.appbarTitle} 
+          />
+        </Appbar.Header>
+
+        {/* Display Surface */}
+        <Surface style={styles.displaySurface} elevation={2}>
+          <View style={styles.historyContainer}>
+            <Text variant="titleMedium" style={styles.historyText}>
+              {previousValue ? `${previousValue} ${operator || ''}` : ''}
+            </Text>
           </View>
-          <View style={styles.displayArea}>
-            <View style={styles.glyphRow}>
-              {renderHieroglyphs(display)}
-            </View>
-            <Text style={styles.standardResult}>{display}</Text>
+          <View style={styles.mainDisplay}>
+            <GlyphDisplay text={currentValue} />
+            <Text variant="labelSmall" style={styles.standardDigits}>
+              {currentValue}
+            </Text>
           </View>
         </Surface>
 
+        {/* Keypad Grid */}
         <View style={styles.keypad}>
           <View style={styles.row}>
-            <CalculatorButton label="C" onPress={handlePress} color="#5D4037" flex={2} />
-            <CalculatorButton label="/" onPress={handlePress} color="#B8860B" textColor="#000" />
-            <CalculatorButton label="*" onPress={handlePress} color="#B8860B" textColor="#000" />
+            <CalcButton label="C" onPress={handleInput} flex={2} buttonColor="#4E342E" mode="contained" />
+            <CalcButton label="/" onPress={handleInput} buttonColor="#B8860B" mode="contained" textColor="#000" />
+            <CalcButton label="*" onPress={handleInput} buttonColor="#B8860B" mode="contained" textColor="#000" />
           </View>
+
           <View style={styles.row}>
-            <CalculatorButton label="7" onPress={handlePress} />
-            <CalculatorButton label="8" onPress={handlePress} />
-            <CalculatorButton label="9" onPress={handlePress} />
-            <CalculatorButton label="-" onPress={handlePress} color="#B8860B" textColor="#000" />
+            <CalcButton label="7" onPress={handleInput} />
+            <CalcButton label="8" onPress={handleInput} />
+            <CalcButton label="9" onPress={handleInput} />
+            <CalcButton label="-" onPress={handleInput} buttonColor="#B8860B" mode="contained" textColor="#000" />
           </View>
+
           <View style={styles.row}>
-            <CalculatorButton label="4" onPress={handlePress} />
-            <CalculatorButton label="5" onPress={handlePress} />
-            <CalculatorButton label="6" onPress={handlePress} />
-            <CalculatorButton label="+" onPress={handlePress} color="#B8860B" textColor="#000" />
+            <CalcButton label="4" onPress={handleInput} />
+            <CalcButton label="5" onPress={handleInput} />
+            <CalcButton label="6" onPress={handleInput} />
+            <CalcButton label="+" onPress={handleInput} buttonColor="#B8860B" mode="contained" textColor="#000" />
           </View>
+
           <View style={styles.row}>
-            <CalculatorButton label="1" onPress={handlePress} />
-            <CalculatorButton label="2" onPress={handlePress} />
-            <CalculatorButton label="3" onPress={handlePress} />
-            <CalculatorButton label="=" onPress={handlePress} color="#D4AF37" textColor="#000" />
+            <CalcButton label="1" onPress={handleInput} />
+            <CalcButton label="2" onPress={handleInput} />
+            <CalcButton label="3" onPress={handleInput} />
+            <CalcButton label="=" onPress={handleInput} buttonColor="#D4AF37" mode="contained" textColor="#000" />
           </View>
+
           <View style={styles.row}>
-            <CalculatorButton label="0" onPress={handlePress} flex={2} />
-            <CalculatorButton label="." onPress={handlePress} />
+            <CalcButton label="0" onPress={handleInput} flex={2} />
+            <CalcButton label="." onPress={handleInput} />
             <View style={{ flex: 1 }} />
           </View>
         </View>
@@ -174,49 +220,44 @@ export default function App() {
   );
 }
 
+// --- STYLES ---
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0D0D0D',
-  },
-  header: {
-    paddingTop: 50,
-    paddingBottom: 20,
-    alignItems: 'center',
     backgroundColor: '#000',
   },
-  headerTitle: {
+  appbar: {
+    backgroundColor: 'transparent',
+    elevation: 0,
+    justifyContent: 'center',
+    height: 80,
+  },
+  appbarTitle: {
     color: '#D4AF37',
-    fontSize: 32,
+    fontSize: 28,
+    textAlign: 'center',
     fontWeight: 'bold',
-    letterSpacing: 10,
+    letterSpacing: 8,
   },
-  headerSubtitle: {
-    color: '#8B7355',
-    fontSize: 12,
-    letterSpacing: 4,
-    marginTop: 5,
-  },
-  displayContainer: {
-    margin: 20,
+  displaySurface: {
+    margin: 16,
     padding: 20,
-    borderRadius: 20,
-    backgroundColor: '#1A1A1A',
-    elevation: 10,
-    borderWidth: 1,
-    borderColor: '#D4AF37',
+    borderRadius: 28,
+    backgroundColor: '#1C1B1F', // Material 3 Surface Color
     minHeight: 180,
     justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.3)',
   },
-  equationArea: {
+  historyContainer: {
     alignItems: 'flex-end',
-    height: 30,
+    minHeight: 30,
   },
-  equationText: {
+  historyText: {
     color: '#8B7355',
-    fontSize: 18,
   },
-  displayArea: {
+  mainDisplay: {
     alignItems: 'flex-end',
   },
   glyphRow: {
@@ -224,42 +265,33 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
   },
-  displayText: {
+  glyphText: {
     color: '#D4AF37',
-    fontSize: 50,
-    lineHeight: 60,
   },
-  standardResult: {
-    color: 'rgba(212, 175, 55, 0.4)',
-    fontSize: 16,
-    marginTop: 5,
+  standardDigits: {
+    color: 'rgba(212, 175, 55, 0.3)',
+    marginTop: 4,
   },
   keypad: {
     flex: 1,
-    padding: 10,
+    paddingHorizontal: 12,
+    paddingBottom: 24,
     justifyContent: 'flex-end',
-    backgroundColor: '#000',
-    borderTopLeftRadius: 40,
-    borderTopRightRadius: 40,
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  buttonSurface: {
-    margin: 5,
-    borderRadius: 15,
-    elevation: 4,
-    overflow: 'hidden',
+    marginBottom: 12,
   },
   button: {
-    height: width / 5,
-    alignItems: 'center',
-    justifyContent: 'center',
+    margin: 6,
+    borderRadius: 20,
   },
-  buttonText: {
-    fontSize: 30,
+  buttonContent: {
+    height: width / 5.2,
+  },
+  buttonLabel: {
+    fontSize: 32,
     fontWeight: 'bold',
   },
 });
